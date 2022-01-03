@@ -138,7 +138,7 @@ class MultiPing(object):
                     raise MultiPingSocketError("Cannot lookup '%s'" % d)
 
             if addr:
-                self._dest_addrs.append(addr)
+                self._dest_addrs.append((d,addr))
             else:
                 # We had a problem collecting information for an address. Can't
                 # process those.
@@ -306,12 +306,12 @@ class MultiPing(object):
             self._last_used_id = int(time.time()) & 0xffff
 
         # Send ICMPecho to all addresses...
-        for addr in all_addrs:
+        for hostname, addr in all_addrs:
             # Make a unique ID, wrapping around at 65535.
             self._last_used_id = (self._last_used_id + 1) & 0xffff
             # Remember the address for each ID so we can produce meaningful
             # result lists later on.
-            self._id_to_addr[self._last_used_id] = addr
+            self._id_to_addr[self._last_used_id] = (hostname, addr)
             # Send an ICMPecho request packet. We specify a payload consisting
             # of the current time stamp. This is returned to us in the
             # response and allows us to calculate the 'ping time'.
@@ -448,8 +448,8 @@ class MultiPing(object):
                         # originally sent from this host.
                         req_sent_time = struct.unpack(
                             "d", payload[:self._time_stamp_size])[0]
-                        results[self._id_to_addr[pkt_id]] = \
-                            resp_receive_time - req_sent_time
+                        results[self._id_to_addr[pkt_id][1]] = \
+                            (resp_receive_time - req_sent_time, self._id_to_addr[pkt_id][0])
 
                         self._remaining_ids.remove(pkt_id)
                 except IndexError:
@@ -460,12 +460,12 @@ class MultiPing(object):
             end_time = time.time()
             remaining_time = remaining_time - (end_time - start_time)
 
-        no_results_so_far = [self._id_to_addr[i] for i in self._remaining_ids]
+        no_results_so_far = [(self._id_to_addr[i][1], self._id_to_addr[i][0]) for i in self._remaining_ids]
         if self._ignore_lookup_errors:
             # With this flag set, names/addresses that we couldn't look up will
             # just be added to the no-results return list. Without the flag
             # those addresses would have caused an exception earlier.
-            no_results_so_far.extend(self._unprocessed_targets)
+            no_results_so_far.extend([(None, target) for target in self._unprocessed_targets])
         return (results, no_results_so_far)
 
     def __del__(self):
